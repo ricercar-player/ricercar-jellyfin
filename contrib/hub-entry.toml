@@ -1,0 +1,22 @@
+# Entry for the ricercar plugin hub (github.com/ricercar-player/ricercar-plugins),
+# to copy as plugins/jellyfin.toml once a release is published. Fill in the
+# SHA-256 from the release's .sha256 files.
+id = "jellyfin"
+name = "Jellyfin"
+description = "Browse, search and play the music of your own Jellyfin server: albums, artists, playlists, favourites and folders. Original files, bit for bit; FLAC transcode only when your DAC cannot take a file's rate. Sign in with Quick Connect or your password."
+author = "ricercar-player"
+license = "MIT"
+repository = "https://github.com/ricercar-player/ricercar-jellyfin"
+version = "0.1.0"
+protocol = 1
+capabilities = ["auth", "browse", "search", "resolve", "favorites", "reporting"]
+
+[[assets]]
+arch = "x86_64"
+url = "https://github.com/ricercar-player/ricercar-jellyfin/releases/download/v0.1.0/jellyfin-x86_64"
+sha256 = "…"
+
+[[assets]]
+arch = "aarch64"
+url = "https://github.com/ricercar-player/ricercar-jellyfin/releases/download/v0.1.0/jellyfin-aarch64"
+sha256 = "…"
