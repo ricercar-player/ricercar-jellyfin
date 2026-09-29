@@ -3,13 +3,13 @@
 # the URLs and the SHA-256 from the release's .sha256 files.
 id = "jellyfin"
 name = "Jellyfin"
-description = "Browse, search and play the music of your own Jellyfin server: albums, artists, playlists, favourites and folders. Original files, bit for bit; FLAC transcode only when your DAC cannot take a file's rate. Sign in with Quick Connect or your password."
+description = "Browse, search and play the music of your own Jellyfin server: albums, artists, playlists, favourites and folders, in ricercar's library next to your local music. Original files, bit for bit; FLAC transcode only when your DAC cannot take a file's rate. Sign in with Quick Connect or your password."
 author = "ricercar-player"
 license = "MIT"
 repository = "https://github.com/ricercar-player/ricercar-jellyfin"
 version = "0.1.0"
 protocol = 1
-capabilities = ["auth", "browse", "search", "resolve", "favorites", "reporting"]
+capabilities = ["auth", "browse", "search", "resolve", "favorites", "reporting", "library"]
 
 [[assets]]
 arch = "x86_64"

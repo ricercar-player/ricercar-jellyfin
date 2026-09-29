@@ -3,6 +3,10 @@
 A [ricercar](https://github.com/ricercar-player/ricercar) source plugin that plays the
 music of your own [Jellyfin](https://jellyfin.org) server.
 
+- **Library:** the albums, artists, tracks and playlists of your server
+  join ricercar's own Albums, Artists and Tracks pages, its search and its
+  Playlists list, next to your local music. The Home page gets
+  "Recently added" and "Random albums" shelves.
 - **Browse:** recently added, albums, artists, playlists, favourites, and
   your music libraries as folders.
 - **Search:** artists, albums, tracks and playlists.
@@ -80,11 +84,18 @@ Plugin protocol 1, as described in ricercar's
 | Ref | Meaning |
 |---|---|
 | `recent`, `albums`, `artists`, `playlists`, `favorites`, `libraries` | Top-level sections |
+| `random` | Home shelf: albums in random order |
+| `tracks` | Every track (behind `library.tracks`) |
 | `t/<id>` | Track (Jellyfin `Audio` item) |
 | `a/<id>` | Album |
 | `r/<id>` | Artist (its albums) |
 | `p/<id>` | Playlist |
 | `f/<id>` | Library or folder |
+
+`library.albums`, `library.artists`, `library.tracks` and
+`library.playlists` list everything the signed-in user can see on the
+server, not only favourites. Artists without a picture of their own get the
+cover of one of their albums.
 
 Error codes follow the protocol: a refused token marks the session expired
 (`auth_required`) and sends `auth.changed`; missing items answer

@@ -34,9 +34,12 @@ pub fn art(server: &str, v: &Value) -> Option<String> {
         .as_str()
         .zip(v["AlbumId"].as_str());
     let (tag, id) = own.or(album)?;
-    Some(format!(
-        "{server}/Items/{id}/Images/Primary?maxHeight=600&quality=90&tag={tag}"
-    ))
+    Some(image(server, id, tag))
+}
+
+/// The URL of the primary image `tag` of item `id`.
+pub fn image(server: &str, id: &str, tag: &str) -> String {
+    format!("{server}/Items/{id}/Images/Primary?maxHeight=600&quality=90&tag={tag}")
 }
 
 /// The first audio stream: from `MediaStreams`, or the first media source.

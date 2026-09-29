@@ -134,7 +134,8 @@ impl Plugin {
         if let Err(e) = written {
             eprintln!("cannot save the session in {}: {e}", path.display());
         }
-        eprintln!("signed in as {} on {}", s.user_name, s.server);
+        // The server only: the user name stays out of the logs.
+        eprintln!("signed in on {}", s.server);
         *self.session.lock().unwrap() = Some(s);
         *self.expired.lock().unwrap() = false;
         self.out.notify("auth.changed", self.auth_status());
@@ -206,7 +207,8 @@ impl Plugin {
             "plugin": {"id": "jellyfin", "name": "Jellyfin", "version": env!("CARGO_PKG_VERSION")},
             "capabilities": {
                 "auth": true, "browse": true, "search": true, "resolve": true,
-                "favorites": true, "reporting": true, "remote_control": false
+                "favorites": true, "reporting": true, "remote_control": false,
+                "library": true
             }
         }))
     }
@@ -291,14 +293,30 @@ impl Plugin {
                 |(r, title)| json!({"ref": r, "kind": "folder", "title": title, "browsable": true}),
             )
             .collect();
-        Ok(json!({ "sections": sections }))
+        // Shelves of albums for the host's Home page.
+        let home = [
+            ("recent", t("Recently added", "Ajouts récents")),
+            ("random", t("Random albums", "Albums au hasard")),
+        ];
+        let home: Vec<Value> = home
+            .iter()
+            .map(
+                |(r, title)| json!({"ref": r, "kind": "folder", "title": title, "browsable": true}),
+            )
+            .collect();
+        Ok(json!({ "sections": sections, "home": home }))
     }
 
     fn list(&self, p: &Value) -> Reply {
-        let (client, s) = self.session()?;
         let r = p["ref"].as_str().unwrap_or("");
         let offset = p["offset"].as_u64().unwrap_or(0);
         let limit = p["limit"].as_u64().unwrap_or(PAGE).clamp(1, PAGE);
+        self.listing(r, offset, limit)
+    }
+
+    /// One page of a section (`albums`, `tracks`…) or of an item's children.
+    fn listing(&self, r: &str, offset: u64, limit: u64) -> Reply {
+        let (client, s) = self.session()?;
         let uid = s.user_id.clone();
         let mut q: Vec<(&str, String)> = vec![
             ("userId", uid.clone()),
@@ -316,8 +334,18 @@ impl Plugin {
                 ("SortBy", "DateCreated,SortName".into()),
                 ("SortOrder", "Descending".into()),
             ]),
+            "random" => q.extend([
+                ("IncludeItemTypes", "MusicAlbum".into()),
+                ("Recursive", "true".into()),
+                ("SortBy", "Random".into()),
+            ]),
             "albums" => q.extend([
                 ("IncludeItemTypes", "MusicAlbum".into()),
+                ("Recursive", "true".into()),
+                ("SortBy", "SortName".into()),
+            ]),
+            "tracks" => q.extend([
+                ("IncludeItemTypes", "Audio".into()),
                 ("Recursive", "true".into()),
                 ("SortBy", "SortName".into()),
             ]),
@@ -373,7 +401,10 @@ impl Plugin {
             },
         }
         let v = client.get(&s, &path, &q).map_err(|e| self.fail(e))?;
-        let list = items::items(&s.server, &v);
+        let mut list = items::items(&s.server, &v);
+        if r == "artists" {
+            self.artist_art(&client, &s, &mut list);
+        }
         let total = v["TotalRecordCount"].as_u64();
         let seen = v["Items"].as_array().map_or(0, Vec::len) as u64;
         let has_more = match total {
@@ -381,6 +412,50 @@ impl Plugin {
             None => seen == limit,
         };
         Ok(json!({"items": list, "total": total, "has_more": has_more}))
+    }
+
+    /// Artists without a picture of their own get the cover of one of their
+    /// albums: one query per 50 artists (URLs stay short).
+    fn artist_art(&self, client: &Client, s: &Session, list: &mut [Value]) {
+        let bare: Vec<String> = list
+            .iter()
+            .filter(|it| it["kind"] == "artist" && it.get("art").is_none())
+            .filter_map(|it| items::split_ref(it["ref"].as_str()?).map(|(_, id)| id.to_string()))
+            .collect();
+        let mut covers: std::collections::HashMap<String, String> = Default::default();
+        for ids in bare.chunks(50) {
+            let q = [
+                ("userId", s.user_id.clone()),
+                ("AlbumArtistIds", ids.join(",")),
+                ("IncludeItemTypes", "MusicAlbum".into()),
+                ("Recursive", "true".into()),
+                ("ImageTypes", "Primary".into()),
+                ("EnableUserData", "false".into()),
+                ("Fields", String::new()),
+            ];
+            let Ok(v) = client.get(s, "/Items", &q) else {
+                return;
+            };
+            for album in v["Items"].as_array().into_iter().flatten() {
+                let Some(url) = items::art(&s.server, album) else {
+                    continue;
+                };
+                for a in album["AlbumArtists"].as_array().into_iter().flatten() {
+                    if let Some(id) = a["Id"].as_str() {
+                        covers.entry(id.to_string()).or_insert_with(|| url.clone());
+                    }
+                }
+            }
+        }
+        for it in list.iter_mut() {
+            let id = it["ref"]
+                .as_str()
+                .and_then(items::split_ref)
+                .map(|(_, id)| id);
+            if let Some(url) = id.and_then(|id| covers.get(id)).cloned() {
+                it["art"] = url.into();
+            }
+        }
     }
 
     fn search(&self, p: &Value) -> Reply {
@@ -397,7 +472,7 @@ impl Plugin {
                     .collect()
             })
             .unwrap_or_else(|| {
-                ["artist", "album", "track", "playlist"]
+                ["artist", "album", "playlist", "track"]
                     .map(String::from)
                     .to_vec()
             });
@@ -426,7 +501,10 @@ impl Plugin {
                 q.push(("IncludeItemTypes", t.into()));
             }
             let v = client.get(&s, path, &q).map_err(|e| self.fail(e))?;
-            let found = items::items(&s.server, &v);
+            let mut found = items::items(&s.server, &v);
+            if kind == "artist" {
+                self.artist_art(&client, &s, &mut found);
+            }
             let total = v["TotalRecordCount"].as_u64();
             let seen = v["Items"].as_array().map_or(0, Vec::len) as u64;
             groups.push(json!({
@@ -492,6 +570,22 @@ impl Plugin {
             r => r,
         };
         r.map(|_| Value::Null).map_err(|e| self.fail(e))
+    }
+
+    // -------------------------------------------------------------- library
+
+    /// All the music the user can see on the server, the same lists as the
+    /// sections of the same name.
+    fn library(&self, method: &str, p: &Value) -> Reply {
+        let offset = p["offset"].as_u64().unwrap_or(0);
+        let limit = p["limit"].as_u64().unwrap_or(PAGE).clamp(1, PAGE);
+        let r = match method {
+            "library.albums" => "albums",
+            "library.artists" => "artists",
+            "library.playlists" => "playlists",
+            _ => "tracks",
+        };
+        self.listing(r, offset, limit)
     }
 
     // -------------------------------------------------------------- resolve
@@ -604,6 +698,9 @@ impl Plugin {
             "search" => self.search(p),
             "item.get" => self.item_get(p),
             "favorites.set" => self.favorite(p),
+            "library.albums" | "library.artists" | "library.tracks" | "library.playlists" => {
+                self.library(method, p)
+            }
             "track.resolve" => self.resolve(p),
             _ => Err(rpc_err(-32601, format!("method not found: {method}"))),
         }
