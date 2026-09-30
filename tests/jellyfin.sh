@@ -1,11 +1,12 @@
 #!/bin/sh
 # Start a throwaway Jellyfin on 127.0.0.1:$PORT (8096 unless taken) with
 # generated FLAC files: a "Sessions" album (three 44.1 kHz / 16-bit tracks,
-# folder cover) and a "HiRes" album (two 192 kHz / 24-bit tracks). Complete
-# the startup wizard (admin "root"), create a "Music" library, scan it, add a
-# second, non-admin user "melomane" the plugin signs in as, then run the
-# end-to-end test against it. No audio device is ever opened: streams are
-# downloaded to files and read with ffprobe.
+# folder cover, lyrics for tracks 2 and 3) and a "HiRes" album (two 192 kHz /
+# 24-bit tracks). Complete the startup wizard (admin "root"), create a
+# "Music" library, scan it, add a second, non-admin user "melomane" the
+# plugin signs in as, then run the end-to-end test against it. No audio
+# device is ever opened: streams are downloaded to files and read with
+# ffprobe.
 #   tests/jellyfin.sh [workdir]      (needs docker, ffmpeg, curl, jq, python3)
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -29,6 +30,10 @@ for i in 1 2; do
 done
 ffmpeg -loglevel error -y -f lavfi -i color=c=0x8a5a3c:s=300x300 -frames:v 1 \
   "$W/music/Ensemble/Sessions/folder.jpg"
+# Lyrics next to the files: synced for track 2, plain for track 3.
+printf '[ar:Ensemble]\n[00:01.50]First line\n[00:04.00]Second line\n[01:02.25]Third line\n' \
+  >"$W/music/Ensemble/Sessions/02.lrc"
+printf 'Plain one\nPlain two\n' >"$W/music/Ensemble/Sessions/03.txt"
 
 docker rm -f "$NAME" >/dev/null 2>&1 || true
 docker run -d --name "$NAME" -p "127.0.0.1:$PORT:8096" --user "$(id -u):$(id -g)" \

@@ -16,10 +16,30 @@ music of your own [Jellyfin](https://jellyfin.org) server.
   (same 44.1/48 kHz family, never higher than the original): FLAC when
   only the rate changes, WAV when the depth must come down too (Jellyfin
   keeps the original depth in FLAC).
-- **Favourites** sync both ways, and plays are reported back to Jellyfin
-  (play count, "played", the dashboard's "now playing").
+- **Favourites** sync both ways (ricercar shows which items are
+  favourites), and plays are reported back to Jellyfin (play count,
+  "played", the dashboard's "now playing"), unless you turn it off in the
+  plugin's settings.
+- **Lyrics** that Jellyfin has for a track (10.9 and later; `.lrc` or
+  `.txt` files next to the music, for instance): synced when they have
+  timestamps.
+- **Go to** a track's album and artist, and an album's label when the
+  server knows it.
+- **Instant Mix** of a track, album, artist or playlist, **similar** albums
+  and artists, and **continuous playback** from Jellyfin's instant mix.
+- **Details** on artist and album pages: the overview, most played tracks,
+  similar artists or albums, more by the same artist, and facts (genres,
+  label, year, length, rating).
+- **Playlists:** create, rename and delete your own playlists, add, remove
+  and reorder their tracks. Playlists of other users stay read-only.
 - **Loudness:** when Jellyfin has measured a track (10.9 and later, with
   the LUFS scan on), its gain is passed to ricercar as ReplayGain.
+
+Settings, from the plugin's row on the Plugins page: *Report what I play*
+(on by default) and *Server conversion* (only when the DAC needs it, or
+never). Settings, lyrics, links, menus, details, continuous playback and
+playlist editing need a ricercar version that supports them; older ones
+simply leave them out.
 
 The plugin talks to Jellyfin's documented REST API only. It works with
 Jellyfin 10.9 and later (tested with 12.1).
@@ -77,6 +97,9 @@ Signing in from another computer than the one running ricercar: paste
 - Stream URLs carry the access token (Jellyfin's `ApiKey` parameter), as
   every Jellyfin client does. ricercar never stores resolved URLs.
 - Use `https://` for a server outside your home network.
+- Recent Jellyfin versions (12.1 at least) give a playlist's entries the id
+  of their track: removing a track that appears twice in a playlist
+  removes both copies.
 
 ## Protocol
 
@@ -93,6 +116,9 @@ Plugin protocol 1, as described in ricercar's
 | `r/<id>` | Artist (its albums) |
 | `p/<id>` | Playlist |
 | `f/<id>` | Library or folder |
+| `s/<id>` | Label (Jellyfin studio): its albums, or its tracks |
+| `m/<id>` | Instant mix of a track, album, artist or playlist |
+| `x/<id>` | Albums or artists similar to an album or artist |
 
 `library.albums`, `library.artists`, `library.tracks` and
 `library.playlists` list everything the signed-in user can see on the

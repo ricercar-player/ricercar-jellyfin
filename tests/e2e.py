@@ -101,6 +101,11 @@ caps = init.get("capabilities", {})
 check(init.get("protocol") == 1 and init["plugin"]["id"] == "jellyfin" and all(caps.get(k) for k in
       ("auth", "browse", "search", "resolve", "favorites", "reporting", "library")) and caps.get("remote_control") is False,
       "initialize: protocol 1, capabilities " + json.dumps(caps))
+check(all(caps.get(k) is True for k in ("lyrics", "playlist_edit", "details", "radio")), "initialize: new capabilities")
+decl = {s["key"]: s for s in init.get("settings", [])}
+check(list(decl) == ["report_playback", "transcode"] and decl["report_playback"]["default"] is True
+      and decl["transcode"]["default"] == "auto" and [o["value"] for o in decl["transcode"]["options"]] == ["auto", "never"]
+      and decl["report_playback"]["label"] == "Report what I play", "initialize: settings declared " + json.dumps(list(decl)))
 dev = open(DATA + "/device_id").read()
 check(len(dev) == 32, "device id created: " + dev)
 check(p.call("auth.status") == {"state": "signed_out"}, "auth.status signed_out at first")
@@ -190,6 +195,11 @@ check(t1["ref"].startswith("t/") and t1["kind"] == "track" and t1["playable"] an
       and t1["album_artist"] == "Ensemble" and t1["year"] == 2021 and t1["duration_ms"] == 20000
       and t1["format"] == {"sample_rate": 44100, "bits": 16, "channels": 1, "codec": "flac"} and t1.get("art") == sess["art"]
       or print("   ", json.dumps(t1, ensure_ascii=False)), "track fields")
+check(t1.get("album_ref") == sess["ref"] and t1.get("favorite") is False and "entry_id" not in t1
+      and t1.get("actions") == [{"id": "instant_mix", "label": "Instant Mix", "ref": "m/" + t1["ref"][2:], "kind": "play"}],
+      "track links, favourite, actions " + json.dumps({k: t1.get(k) for k in ("album_ref", "artist_ref", "favorite", "actions")}))
+check([a["id"] for a in sess.get("actions", [])] == ["instant_mix", "similar"] and sess["actions"][1]["kind"] == "browse"
+      and sess.get("favorite") is False, "album actions: instant mix, similar albums")
 pg = p.call("browse.list", {"ref": sess["ref"], "offset": 1, "limit": 1})
 check([x["title"] for x in pg["items"]] == ["Track 2"] and pg["has_more"] and pg["total"] == 3, "album tracks paging")
 ar = p.call("browse.list", {"ref": "artists", "offset": 0, "limit": 50})
@@ -201,6 +211,24 @@ pg = p.call("browse.list", {"ref": "artists", "offset": 1, "limit": 1})
 check([x["title"] for x in pg["items"]] == ["Trio"] and pg["total"] == 2 and not pg["has_more"], "artists paging")
 check([x["title"] for x in p.call("browse.list", {"ref": trio["ref"], "offset": 0, "limit": 10})["items"]] == ["HiRes"], "artist -> its albums")
 check([x["title"] for x in p.call("browse.list", {"ref": ens["ref"], "offset": 0, "limit": 10})["items"]] == ["Sessions"], "artist Ensemble -> Sessions")
+check(t1.get("artist_ref") == ens["ref"] and sess.get("artist_ref") == ens["ref"], "track and album artist_ref -> the artist")
+check([a["ref"] for a in ens.get("actions", [])] == ["m/" + ens["ref"][2:], "x/" + ens["ref"][2:]]
+      and ens["actions"][1]["label"] == "Similar artists", "artist actions")
+# The refs of the actions list their items.
+im = p.call("browse.list", {"ref": sess["actions"][0]["ref"], "offset": 0, "limit": 200})
+check(sorted(x["title"] for x in im["items"]) == ["Track 1", "Track 2", "Track 3"] and all(x["kind"] == "track" for x in im["items"])
+      and im["total"] == 3 and not im["has_more"], "instant mix of an album " + str([x["title"] for x in im["items"]]))
+im = p.call("browse.list", {"ref": "m/" + t1["ref"][2:], "offset": 1, "limit": 1})
+check(len(im["items"]) == 1 and im["has_more"], "instant mix of a track, paged")
+sim = p.call("browse.list", {"ref": ens["actions"][1]["ref"], "offset": 0, "limit": 50})
+check(isinstance(sim.get("items"), list) and all(x["kind"] == "artist" for x in sim["items"]),
+      "similar artists " + str([x["title"] for x in sim.get("items", [])]))
+it = p.call("item.get", {"ref": sess["actions"][0]["ref"]})
+check(it.get("kind") == "folder" and it.get("title") == "Instant Mix" and it.get("subtitle") == "Sessions" and it.get("browsable"),
+      "item.get of an instant mix ref " + json.dumps(it, ensure_ascii=False))
+it = p.call("item.get", {"ref": sess["actions"][1]["ref"]})
+check(it.get("title") == "Similar albums" and it.get("subtitle") == "Sessions", "item.get of a similar ref")
+check(code(p.call("browse.list", {"ref": "m/" + MISSING, "offset": 0, "limit": 5})) == -32002, "mix of a missing item -> not_found")
 libs = p.call("browse.list", {"ref": "libraries", "offset": 0, "limit": 10})
 check([(x["title"], x["kind"]) for x in libs["items"]] == [("Music", "folder")] and libs["total"] == 1 and not libs["has_more"]
       and libs["items"][0]["ref"].startswith("f/"), "libraries: " + json.dumps(libs, ensure_ascii=False))
@@ -226,6 +254,9 @@ check(len(mix) == 1 and mix[0]["ref"] == "p/" + pl["Id"] and mix[0]["kind"] == "
       "playlists " + json.dumps(pls["items"], ensure_ascii=False))
 pt = p.call("browse.list", {"ref": mix[0]["ref"], "offset": 0, "limit": 50})
 check([x["title"] for x in pt["items"]] == ["Track 1", "Track 3"], "playlist tracks")
+check(all(x.get("entry_id") for x in pt["items"]), "playlist tracks carry entry ids " + str([x.get("entry_id") for x in pt["items"]]))
+check(mix[0].get("editable") is True and p.call("item.get", {"ref": mix[0]["ref"]}).get("editable") is True,
+      "the user's own playlist is editable")
 pg = p.call("browse.list", {"ref": mix[0]["ref"], "offset": 1, "limit": 1})
 check([x["title"] for x in pg["items"]] == ["Track 3"] and not pg["has_more"], "playlist paging " + json.dumps({k: pg.get(k) for k in ("total", "has_more")}))
 
@@ -286,6 +317,94 @@ check(code(p.call("favorites.set", {"ref": "t/" + MISSING, "on": True})) == -320
 check(userdata(root_uid := [u["Id"] for u in jf("/Users") if u["Name"] == "root"][0], t2["ref"][2:])["IsFavorite"] is False,
       "favourite is the signed-in user's, not the admin's")
 
+check(p.call("item.get", {"ref": t2["ref"]}).get("favorite") is True and all(x.get("favorite") is True for x in fav["items"]),
+      "favourite state on items")
+
+# --------------------------------------------------------------- lyrics
+ly = p.call("lyrics.get", {"ref": t2["ref"]})
+check(ly == {"synced": [{"time_ms": 1500, "text": "First line"}, {"time_ms": 4000, "text": "Second line"},
+                        {"time_ms": 62250, "text": "Third line"}]}, "synced lyrics (.lrc) " + json.dumps(ly))
+ly = p.call("lyrics.get", {"ref": t3["ref"]})
+check(ly == {"plain": "Plain one\nPlain two"}, "plain lyrics (.txt) " + json.dumps(ly))
+check(code(p.call("lyrics.get", {"ref": t1["ref"]})) == -32002, "no lyrics -> not_found")
+check(code(p.call("lyrics.get", {"ref": sess["ref"]})) == -32002, "lyrics of an album -> not_found")
+
+# ------------------------------------------------- label, details, radio
+# Set by the admin as Jellyfin's metadata editor would: a label, an overview
+# in HTML, a rating.
+hid = hires["ref"][2:]
+dto = jf(f"/Items/{hid}?userId={jf('/Users/Me')['Id']}")
+dto.update({"Studios": [{"Name": "North Label"}], "CommunityRating": 8.5,
+            "Overview": "<p>Recorded <b>live</b> in one take.</p><p>Second &amp; last.</p>"})
+jf(f"/Items/{hid}", "POST", dto)
+# The label's own item appears with the next library scan; reading it by
+# name creates it at once.
+jf("/Studios/" + urllib.parse.quote("North Label"))
+time.sleep(1)
+h2 = p.call("item.get", {"ref": hires["ref"]})
+check(h2.get("label_ref", "").startswith("s/"), "album label_ref " + json.dumps(h2.get("label_ref")))
+lab = {}
+for _ in range(10):  # the label's index follows the update shortly
+    lab = p.call("browse.list", {"ref": h2.get("label_ref", "s/x"), "offset": 0, "limit": 10})
+    if lab.get("items"): break
+    time.sleep(1)
+check([x["title"] for x in lab.get("items", [])] == ["HiRes"], "label ref lists its albums " + json.dumps(lab)[:200])
+li = p.call("item.get", {"ref": h2.get("label_ref", "s/x")})
+check(li.get("title") == "North Label" and li.get("kind") == "folder" and li.get("browsable"), "item.get of a label " + json.dumps(li))
+d = p.call("item.details", {"ref": hires["ref"]})
+facts = {f["label"]: f["value"] for f in d.get("facts", [])}
+check(d.get("biography", {}).get("text") == "Recorded live in one take.\n\nSecond & last.", "album biography, HTML stripped " + json.dumps(d.get("biography")))
+check(facts.get("Label") == "North Label" and facts.get("Year") == "2024" and facts.get("Rating") == "8.5/10", "album facts " + json.dumps(facts))
+d = p.call("item.details", {"ref": sess["ref"]})
+check("biography" not in d and {f["label"]: f["value"] for f in d.get("facts", [])}.get("Genre") == "Jazz"
+      and all(s["items"] for s in d.get("related", [])), "details without overview " + json.dumps(d)[:300])
+check(code(p.call("item.details", {"ref": "a/" + MISSING})) == -32002, "details of a missing item -> not_found")
+check(code(p.call("item.details", {"ref": "albums"})) == -32002, "details of a section -> not_found")
+r = p.call("radio.next", {"seed": t1["ref"], "exclude": [t2["ref"]], "limit": 10})
+refs = [x["ref"] for x in r.get("items", [])]
+check(refs and t1["ref"] not in refs and t2["ref"] not in refs and all(x["kind"] == "track" and x["playable"] for x in r["items"]),
+      "radio.next from a track, seed and exclude left out " + str([x["title"] for x in r.get("items", [])]))
+r = p.call("radio.next", {"seed": sess["ref"], "exclude": [], "limit": 1})
+check(len(r.get("items", [])) == 1, "radio.next from an album, limit 1")
+check(code(p.call("radio.next", {"seed": "albums", "exclude": [], "limit": 5})) == -32002, "radio.next from a section -> not_found")
+
+# ------------------------------------------------------ playlist editing
+check(code(p.call("playlists.create", {"name": "  "})) == -32602, "create without a name -> bad params")
+np = p.call("playlists.create", {"name": "Late Set", "description": "ignored", "public": False})
+nid = np.get("ref", "p/")[2:]
+check(np.get("kind") == "playlist" and np.get("title") == "Late Set" and np.get("editable") is True
+      and jf(f"/Items?userId={uid}&Ids={nid}")["Items"][0]["Name"] == "Late Set", "playlists.create " + json.dumps(np, ensure_ascii=False))
+def titles(ref):
+    return [x["title"] for x in p.call("browse.list", {"ref": ref, "offset": 0, "limit": 50})["items"]]
+def entries(ref):
+    return p.call("browse.list", {"ref": ref, "offset": 0, "limit": 50})["items"]
+check(p.call("playlists.add", {"ref": np["ref"], "items": [t1["ref"], t2["ref"], t3["ref"]]}) is None
+      and titles(np["ref"]) == ["Track 1", "Track 2", "Track 3"], "playlists.add")
+check(code(p.call("playlists.add", {"ref": np["ref"], "items": [sess["ref"]]})) == -32602, "add an album ref -> bad params")
+e = entries(np["ref"])
+check(p.call("playlists.move", {"ref": np["ref"], "entry": e[2]["entry_id"], "to": 0}) is None
+      and titles(np["ref"]) == ["Track 3", "Track 1", "Track 2"], "playlists.move to the top")
+e = entries(np["ref"])
+check(p.call("playlists.remove", {"ref": np["ref"], "entries": [e[1]["entry_id"]]}) is None
+      and titles(np["ref"]) == ["Track 3", "Track 2"], "playlists.remove")
+check(code(p.call("playlists.remove", {"ref": np["ref"], "entries": ["../x"]})) == -32602, "remove a bad entry -> bad params")
+check(p.call("playlists.rename", {"ref": np["ref"], "name": "Early Set"}) is None
+      and jf(f"/Items?userId={uid}&Ids={nid}")["Items"][0]["Name"] == "Early Set", "playlists.rename")
+# Someone else's playlist, public: listed, not editable, edits refused.
+shared = jf("/Playlists", "POST", {"Name": "Shared", "Ids": [t1["ref"][2:]], "UserId": root_uid, "MediaType": "Audio", "IsPublic": True})
+sh = [x for x in p.call("browse.list", {"ref": "playlists", "offset": 0, "limit": 50})["items"] if x["title"] == "Shared"]
+check(len(sh) == 1 and sh[0].get("editable") is False, "someone else's public playlist: not editable " + json.dumps(sh))
+sref = "p/" + shared["Id"]
+check(all(code(p.call(m, prm)) == -32602 for m, prm in (
+    ("playlists.add", {"ref": sref, "items": [t2["ref"]]}), ("playlists.rename", {"ref": sref, "name": "Mine"}),
+    ("playlists.delete", {"ref": sref}), ("playlists.move", {"ref": sref, "entry": t1["ref"][2:], "to": 0}),
+    ("playlists.remove", {"ref": sref, "entries": [t1["ref"][2:]]}))), "edits of someone else's playlist -> bad params")
+check(jf(f"/Items?userId={root_uid}&Ids={shared['Id']}")["Items"][0]["Name"] == "Shared" and titles(sref) == ["Track 1"],
+      "  ... and nothing changed on the server")
+check(p.call("auth.status")["state"] == "signed_in", "refused edits leave the session alone")
+check(p.call("playlists.delete", {"ref": np["ref"]}) is None and jf(f"/Items?userId={uid}&Ids={nid}")["Items"] == [], "playlists.delete")
+jf(f"/Items/{shared['Id']}", "DELETE")
+
 # -------------------------------------------------------------- resolve
 r = p.call("track.resolve", {"ref": t1["ref"], "purpose": "play"})
 check(f"/Audio/{t1['ref'][2:]}/stream?static=true" in r.get("url", "") and r.get("duration_ms") == 20000 and r.get("live") is False
@@ -332,6 +451,18 @@ check(after.get("PlayCount", 0) == before.get("PlayCount", 0) + 1 and after.get(
       "played to the end: play count %s -> %s, played %s" % (before.get("PlayCount"), after.get("PlayCount"), after.get("Played")))
 now = [s for s in jf("/Sessions") if s.get("DeviceId") == dev]
 check(not any(s.get("NowPlayingItem") for s in now), "stopped: no longer playing on the server")
+# Settings, changed without a restart: nothing reported, originals only.
+p.notify("settings.changed", {"settings": {"report_playback": False, "transcode": "never"}}); time.sleep(0.3)
+b1 = userdata(uid, t1["ref"][2:])
+p.notify("playback.started", {"ref": t1["ref"]}); time.sleep(1.5)
+now = [s for s in jf("/Sessions") if s.get("DeviceId") == dev]
+check(not any(s.get("NowPlayingItem") for s in now) and userdata(uid, t1["ref"][2:]).get("PlayCount") == b1.get("PlayCount"),
+      "report_playback off: nothing sent")
+r = p.call("track.resolve", {"ref": hi1["ref"], "purpose": "play"})
+check("static=true" in r.get("url", "") and r["format"]["sample_rate"] == 192000, "transcode never: the original on a 96k DAC")
+p.notify("settings.changed", {"settings": {"report_playback": True, "transcode": "auto"}}); time.sleep(0.3)
+r = p.call("track.resolve", {"ref": hi1["ref"], "purpose": "play"})
+check("/stream.flac?" in r.get("url", ""), "transcode auto again")
 b2 = userdata(uid, t2["ref"][2:])
 p.notify("playback.started", {"ref": t2["ref"]}); time.sleep(1)
 # Jellyfin (12.1) counts an audio play when playback *starts* (SessionManager.
@@ -346,7 +477,12 @@ p.p.wait(timeout=10)
 
 # -------------------------------------------------------------- restart
 p = P()
-p.call("initialize", {"protocol": 1, "data_dir": DATA, "locale": "fr-FR", "output": OUT})
+init = p.call("initialize", {"protocol": 1, "data_dir": DATA, "locale": "fr-FR", "output": OUT, "settings": {"transcode": "never", "gone": 1}})
+check(init["settings"][0]["label"] == "Signaler les écoutes", "settings labels in French")
+r = p.call("track.resolve", {"ref": hi1["ref"], "purpose": "play"})
+check("static=true" in r.get("url", ""), "settings from initialize: transcode never")
+check([a["label"] for a in p.call("item.get", {"ref": sess["ref"]}).get("actions", [])] == ["Mix instantané", "Albums similaires"],
+      "action labels in French")
 st = p.call("auth.status")
 check(st["state"] == "signed_in" and st["account"]["display_name"] == USER and open(DATA + "/device_id").read() == dev,
       "session and device id restored after restart")
