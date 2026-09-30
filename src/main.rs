@@ -400,7 +400,15 @@ impl Plugin {
                 _ => return Err(rpc_err(-32002, "no such list")),
             },
         }
-        let v = client.get(&s, &path, &q).map_err(|e| self.fail(e))?;
+        // An unknown `ParentId` is a 400 on Jellyfin 12, not a 404.
+        let by_parent = q.iter().any(|(k, _)| *k == "ParentId");
+        let v = client
+            .get(&s, &path, &q)
+            .map_err(|e| match e {
+                Error::Status(400, _) if by_parent => Error::NotFound,
+                e => e,
+            })
+            .map_err(|e| self.fail(e))?;
         let mut list = items::items(&s.server, &v);
         if r == "artists" {
             self.artist_art(&client, &s, &mut list);
@@ -612,9 +620,14 @@ impl Plugin {
             s.token
         );
         let mut format = stored.clone();
-        if let Plan::Flac { rate, bits } = plan {
+        let transcode = match plan {
+            Plan::Direct => None,
+            Plan::Flac { rate, bits } => Some(("flac", "flac".to_string(), rate, bits)),
+            Plan::Wav { rate, bits } => Some(("wav", format!("pcm_s{bits}le"), rate, bits)),
+        };
+        if let Some((container, codec, rate, bits)) = transcode {
             url = format!(
-                "{}/Audio/{id}/stream.flac?container=flac&audioCodec=flac&audioSampleRate={rate}&maxAudioBitDepth={bits}\
+                "{}/Audio/{id}/stream.{container}?container={container}&audioCodec={codec}&audioSampleRate={rate}\
                  &mediaSourceId={source}&deviceId={}&playSessionId={}&ApiKey={}",
                 s.server,
                 client.device_id(),
@@ -623,8 +636,8 @@ impl Plugin {
             );
             format["sample_rate"] = rate.into();
             format["bits"] = bits.into();
-            format["codec"] = "flac".into();
-            eprintln!("{r}: {rate} Hz / {bits} bits transcode for this output");
+            format["codec"] = container.into();
+            eprintln!("{r}: {rate} Hz / {bits} bits {container} transcode for this output");
         }
         let mut res = json!({
             "url": url,

@@ -12,8 +12,10 @@ music of your own [Jellyfin](https://jellyfin.org) server.
 - **Search:** artists, albums, tracks and playlists.
 - **Bit-perfect:** tracks play from the original file, byte for byte. Only
   when your DAC cannot take a file's sample rate or bit depth does the
-  plugin ask Jellyfin for a FLAC transcode, at the closest rate the DAC
-  accepts (same 44.1/48 kHz family, never higher than the original).
+  plugin ask Jellyfin for a transcode, at the closest rate the DAC accepts
+  (same 44.1/48 kHz family, never higher than the original): FLAC when
+  only the rate changes, WAV when the depth must come down too (Jellyfin
+  keeps the original depth in FLAC).
 - **Favourites** sync both ways, and plays are reported back to Jellyfin
   (play count, "played", the dashboard's "now playing").
 - **Loudness:** when Jellyfin has measured a track (10.9 and later, with
@@ -106,7 +108,13 @@ Error codes follow the protocol: a refused token marks the session expired
 ```sh
 cargo test
 cargo clippy --all-targets
+tests/jellyfin.sh      # end to end, against a throwaway Jellyfin in Docker
 ```
+
+`tests/jellyfin.sh` generates FLAC files, starts `jellyfin/jellyfin` on
+127.0.0.1:8096 (or the next free port), completes the startup wizard,
+scans a library and runs `tests/e2e.py` against it. Nothing is played:
+streams are downloaded and checked with `ffprobe`.
 
 The CI builds static binaries (musl) for x86_64 and aarch64 on every tag
 `v*` and attaches them, with their SHA-256, to a GitHub release.

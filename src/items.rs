@@ -206,13 +206,17 @@ impl Output {
 pub enum Plan {
     /// The original file, byte for byte.
     Direct,
-    /// A FLAC transcode at a rate and depth the DAC accepts.
+    /// A FLAC transcode at a rate the DAC accepts, same depth as the file.
     Flac { rate: u32, bits: u8 },
+    /// A WAV transcode at a lower depth. Jellyfin keeps the source depth
+    /// when it encodes FLAC, whatever the request asks; only PCM honours it.
+    Wav { rate: u32, bits: u8 },
 }
 
 /// Keep the original unless the DAC cannot take its rate or depth; then
 /// ask Jellyfin for FLAC at the closest rate the DAC takes, preferring the
-/// same family (44.1 kHz or 48 kHz multiples) and never going up.
+/// same family (44.1 kHz or 48 kHz multiples) and never going up. A file
+/// deeper than the DAC comes as WAV, the only format Jellyfin reduces.
 pub fn plan(out: &Output, rate: Option<u32>, bits: Option<u8>) -> Plan {
     let Some(rate) = rate else {
         return Plan::Direct;
@@ -242,9 +246,16 @@ pub fn plan(out: &Output, rate: Option<u32>, bits: Option<u8>) -> Plan {
         .copied()
         .unwrap_or(rate);
     let depth = bits.unwrap_or(16).min(out.max_bits.unwrap_or(24)).max(16);
-    Plan::Flac {
-        rate: target,
-        bits: depth,
+    if bits.is_some_and(|b| depth < b) {
+        Plan::Wav {
+            rate: target,
+            bits: depth,
+        }
+    } else {
+        Plan::Flac {
+            rate: target,
+            bits: depth,
+        }
     }
 }
 
@@ -324,7 +335,7 @@ mod tests {
         );
         assert_eq!(
             plan(&usb, Some(192_000), Some(32)),
-            Plan::Flac {
+            Plan::Wav {
                 rate: 96_000,
                 bits: 24
             }
@@ -332,7 +343,22 @@ mod tests {
         let cd = dac(&[44_100], 16);
         assert_eq!(
             plan(&cd, Some(48_000), Some(24)),
+            Plan::Wav {
+                rate: 44_100,
+                bits: 16
+            }
+        );
+        assert_eq!(
+            plan(&cd, Some(48_000), Some(16)),
             Plan::Flac {
+                rate: 44_100,
+                bits: 16
+            }
+        );
+        // Right rate, too deep: only the depth changes.
+        assert_eq!(
+            plan(&cd, Some(44_100), Some(24)),
+            Plan::Wav {
                 rate: 44_100,
                 bits: 16
             }
