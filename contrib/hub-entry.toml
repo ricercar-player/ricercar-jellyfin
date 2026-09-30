@@ -14,9 +14,9 @@ capabilities = ["auth", "browse", "search", "resolve", "favorites", "reporting",
 [[assets]]
 arch = "x86_64"
 url = "https://github.com/ricercar-player/ricercar-jellyfin/releases/download/v0.2.1/jellyfin-x86_64"
-sha256 = "47bc6934cc9c4c8e2cf83c07e39dff8af87f553a393e81e3db3e9d549882022f"
+sha256 = "a10a011391a1eec343925a9cdf6379d966c3955c26be700a7180f30c38aa90a6"
 
 [[assets]]
 arch = "aarch64"
 url = "https://github.com/ricercar-player/ricercar-jellyfin/releases/download/v0.2.1/jellyfin-aarch64"
-sha256 = "98c304796ea938cf3b4affc0ee7d7dbb74cb8eb82743b9d95f0577025727ee4d"
+sha256 = "87b79216cda8373f35558ef8b3588cb703fb2d8cbef14b8c49afa527dad380f0"
