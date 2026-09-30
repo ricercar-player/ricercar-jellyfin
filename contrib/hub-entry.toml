@@ -3,20 +3,20 @@
 # the URLs and the SHA-256 from the release's .sha256 files.
 id = "jellyfin"
 name = "Jellyfin"
-description = "Browse, search and play the music of your own Jellyfin server: albums, artists, playlists, favourites and folders, in ricercar's library next to your local music. Original files, bit for bit; FLAC transcode only when your DAC cannot take a file's rate. Sign in with Quick Connect or your password."
+description = "Browse, search and play the music of your own Jellyfin server: albums, artists, playlists, favourites and folders, in ricercar's library next to your local music. Original files, bit for bit; transcode only when your DAC cannot take a file. Sign in with Quick Connect or your password."
 author = "ricercar-player"
 license = "MIT"
 repository = "https://github.com/ricercar-player/ricercar-jellyfin"
-version = "0.2.0"
+version = "0.2.1"
 protocol = 1
 capabilities = ["auth", "browse", "search", "resolve", "favorites", "reporting", "library"]
 
 [[assets]]
 arch = "x86_64"
-url = "https://github.com/ricercar-player/ricercar-jellyfin/releases/download/v0.2.0/jellyfin-x86_64"
+url = "https://github.com/ricercar-player/ricercar-jellyfin/releases/download/v0.2.1/jellyfin-x86_64"
 sha256 = "47bc6934cc9c4c8e2cf83c07e39dff8af87f553a393e81e3db3e9d549882022f"
 
 [[assets]]
 arch = "aarch64"
-url = "https://github.com/ricercar-player/ricercar-jellyfin/releases/download/v0.2.0/jellyfin-aarch64"
+url = "https://github.com/ricercar-player/ricercar-jellyfin/releases/download/v0.2.1/jellyfin-aarch64"
 sha256 = "98c304796ea938cf3b4affc0ee7d7dbb74cb8eb82743b9d95f0577025727ee4d"
