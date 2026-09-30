@@ -385,6 +385,15 @@ e = entries(np["ref"])
 check(p.call("playlists.move", {"ref": np["ref"], "entry": e[2]["entry_id"], "to": 0}) is None
       and titles(np["ref"]) == ["Track 3", "Track 1", "Track 2"], "playlists.move to the top")
 e = entries(np["ref"])
+check(p.call("playlists.move", {"ref": np["ref"], "entry": e[0]["entry_id"], "to": 1}) is None
+      and titles(np["ref"]) == ["Track 1", "Track 3", "Track 2"], "playlists.move down: out, then in at 1")
+e = entries(np["ref"])
+check(p.call("playlists.move", {"ref": np["ref"], "entry": e[0]["entry_id"], "to": 99}) is None
+      and titles(np["ref"]) == ["Track 3", "Track 2", "Track 1"], "playlists.move past the end -> last")
+e = entries(np["ref"])
+check(p.call("playlists.move", {"ref": np["ref"], "entry": e[2]["entry_id"], "to": 1}) is None
+      and titles(np["ref"]) == ["Track 3", "Track 1", "Track 2"], "playlists.move up: out, then in at 1")
+e = entries(np["ref"])
 check(p.call("playlists.remove", {"ref": np["ref"], "entries": [e[1]["entry_id"]]}) is None
       and titles(np["ref"]) == ["Track 3", "Track 2"], "playlists.remove")
 check(code(p.call("playlists.remove", {"ref": np["ref"], "entries": ["../x"]})) == -32602, "remove a bad entry -> bad params")
@@ -479,6 +488,17 @@ p.p.wait(timeout=10)
 p = P()
 init = p.call("initialize", {"protocol": 1, "data_dir": DATA, "locale": "fr-FR", "output": OUT, "settings": {"transcode": "never", "gone": 1}})
 check(init["settings"][0]["label"] == "Signaler les écoutes", "settings labels in French")
+while not p.notes.empty(): p.notes.get()
+p.notify("locale.changed", {"locale": "en-GB"})
+n = p.note()
+check(n.get("method") == "settings.declared" and n["params"]["settings"][0]["label"] == "Report what I play",
+      "locale.changed: settings declared again in English")
+p.notify("locale.changed", {"locale": "en-US"})
+check(p.note(timeout=1) == {}, "same language again: nothing sent")
+p.notify("locale.changed", {"locale": "fr-BE"})
+n = p.note()
+check(n.get("method") == "settings.declared" and n["params"]["settings"][0]["label"] == "Signaler les écoutes",
+      "locale.changed back to French")
 r = p.call("track.resolve", {"ref": hi1["ref"], "purpose": "play"})
 check("static=true" in r.get("url", ""), "settings from initialize: transcode never")
 check([a["label"] for a in p.call("item.get", {"ref": sess["ref"]}).get("actions", [])] == ["Mix instantané", "Albums similaires"],

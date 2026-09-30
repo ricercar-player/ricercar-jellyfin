@@ -15,7 +15,7 @@ mod login;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 
 use serde_json::{Value, json};
 
@@ -74,7 +74,16 @@ impl Settings {
     }
 }
 
-/// The declaration sent in the `initialize` result.
+/// Whether a BCP 47 `locale` (`fr`, `fr-BE`…) asks for French.
+fn is_french(locale: &Value) -> bool {
+    locale
+        .as_str()
+        .and_then(|l| l.split(['-', '_']).next())
+        .is_some_and(|l| l.eq_ignore_ascii_case("fr"))
+}
+
+/// The declaration sent in the `initialize` result, and again with
+/// `settings.declared` when the locale changes.
 fn settings_schema(fr: bool) -> Value {
     let t = |en: &'static str, f: &'static str| if fr { f } else { en };
     let section = t("Playback", "Lecture");
@@ -225,7 +234,7 @@ impl Plugin {
             .map(PathBuf::from)
             .unwrap_or_else(std::env::temp_dir);
         let _ = std::fs::create_dir_all(&data_dir);
-        *self.french.lock().unwrap() = p["locale"].as_str().is_some_and(|l| l.starts_with("fr"));
+        *self.french.lock().unwrap() = is_french(&p["locale"]);
         *self.output.lock().unwrap() = Output::from_json(&p["output"]);
         *self.settings.lock().unwrap() = Settings::from_json(&p["settings"]);
 
@@ -1229,6 +1238,23 @@ impl Plugin {
             .as_u64()
             .ok_or_else(|| rpc_err(-32602, "bad position"))?;
         let id = self.editable_playlist(&client, &s, p)?;
+        // Past the end means last, as in the protocol; Jellyfin fails on it.
+        let to = if to > 0 {
+            let q = [
+                ("userId", s.user_id.clone()),
+                ("Limit", "1".into()),
+                ("Fields", String::new()),
+            ];
+            let v = client
+                .get(&s, &format!("/Playlists/{id}/Items"), &q)
+                .map_err(|e| self.fail(e))?;
+            match v["TotalRecordCount"].as_u64() {
+                Some(len) => to.min(len.saturating_sub(1)),
+                None => to,
+            }
+        } else {
+            to
+        };
         client
             .post_empty(&s, &format!("/Playlists/{id}/Items/{entry}/Move/{to}"), &[])
             .map(|_| Value::Null)
@@ -1305,6 +1331,19 @@ fn main() {
         login: Mutex::new(None),
     });
 
+    // Playback reports in the order they came, off the reading loop: an
+    // `ended` must not overtake the `started` it follows.
+    let reports = {
+        let (tx, rx) = mpsc::channel::<(String, Value)>();
+        let plugin = plugin.clone();
+        std::thread::spawn(move || {
+            for (method, params) in rx {
+                plugin.report(&method, &params);
+            }
+        });
+        tx
+    };
+
     for line in BufReader::new(std::io::stdin()).lines() {
         let Ok(line) = line else { break };
         let Ok(msg) = serde_json::from_str::<Value>(&line) else {
@@ -1325,9 +1364,20 @@ fn main() {
                     *plugin.settings.lock().unwrap() = new;
                     eprintln!("settings: {new:?}");
                 }
+                // The interface language changed: labels follow, the
+                // settings dialog too.
+                "locale.changed" => {
+                    let fr = is_french(&params["locale"]);
+                    let was = std::mem::replace(&mut *plugin.french.lock().unwrap(), fr);
+                    if was != fr {
+                        out.notify(
+                            "settings.declared",
+                            json!({"settings": settings_schema(fr)}),
+                        );
+                    }
+                }
                 m if m.starts_with("playback.") => {
-                    let plugin = plugin.clone();
-                    std::thread::spawn(move || plugin.report(&method, &params));
+                    let _ = reports.send((method, params));
                 }
                 _ => {}
             }
@@ -1414,5 +1464,16 @@ mod tests {
             );
         }
         assert_eq!(settings_schema(true)[0]["label"], "Signaler les écoutes");
+    }
+
+    #[test]
+    fn locales() {
+        for l in ["fr", "fr-BE", "FR", "fr_FR"] {
+            assert!(is_french(&json!(l)), "{l}");
+        }
+        for l in ["en-GB", "frr", "de", ""] {
+            assert!(!is_french(&json!(l)), "{l}");
+        }
+        assert!(!is_french(&Value::Null));
     }
 }
