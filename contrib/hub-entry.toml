@@ -7,16 +7,16 @@ description = "Browse, search and play the music of your own Jellyfin server: al
 author = "ricercar-player"
 license = "MIT"
 repository = "https://github.com/ricercar-player/ricercar-jellyfin"
-version = "0.2.1"
+version = "0.2.2"
 protocol = 1
 capabilities = ["auth", "browse", "search", "resolve", "favorites", "reporting", "library"]
 
 [[assets]]
 arch = "x86_64"
-url = "https://github.com/ricercar-player/ricercar-jellyfin/releases/download/v0.2.1/jellyfin-x86_64"
+url = "https://github.com/ricercar-player/ricercar-jellyfin/releases/download/v0.2.2/jellyfin-x86_64"
 sha256 = "a10a011391a1eec343925a9cdf6379d966c3955c26be700a7180f30c38aa90a6"
 
 [[assets]]
 arch = "aarch64"
-url = "https://github.com/ricercar-player/ricercar-jellyfin/releases/download/v0.2.1/jellyfin-aarch64"
+url = "https://github.com/ricercar-player/ricercar-jellyfin/releases/download/v0.2.2/jellyfin-aarch64"
 sha256 = "87b79216cda8373f35558ef8b3588cb703fb2d8cbef14b8c49afa527dad380f0"

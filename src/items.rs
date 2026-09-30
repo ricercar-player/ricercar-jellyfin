@@ -123,6 +123,7 @@ pub fn item(server: &str, v: &Value) -> Option<Value> {
                 "album": text(v, "Name"),
                 "year": year,
                 "genre": v["Genres"][0].as_str(),
+                "track_count": num(v, "ChildCount"),
                 "browsable": true,
             })
         }
@@ -138,6 +139,7 @@ pub fn item(server: &str, v: &Value) -> Option<Value> {
             "kind": "playlist",
             "title": title,
             "subtitle": num(v, "ChildCount").map(|n| format!("{n} ♪")),
+            "track_count": num(v, "ChildCount"),
             "browsable": true,
         }),
         "Folder" | "CollectionFolder" | "UserView" => json!({
@@ -313,9 +315,10 @@ mod tests {
     #[test]
     fn album_and_unknown() {
         let v = json!({"Id": "a1", "Type": "MusicAlbum", "Name": "Sessions",
-                       "AlbumArtist": "Ensemble", "ProductionYear": 2021});
+                       "AlbumArtist": "Ensemble", "ProductionYear": 2021, "ChildCount": 9});
         let it = item(SERVER, &v).unwrap();
         assert_eq!(it["subtitle"], "Ensemble · 2021");
+        assert_eq!(it["track_count"], 9);
         assert_eq!(it["browsable"], true);
         assert!(it.get("art").is_none());
         assert!(item(SERVER, &json!({"Id": "m", "Type": "Movie", "Name": "x"})).is_none());
